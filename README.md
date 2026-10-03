@@ -20,8 +20,10 @@ key press guard), a dry run mode, and tests that need no hardware.
 
 ## Before you start
 
-You need a Linux desktop with systemd (the USB rules rely on logind), `curl`, `unzip` and `bash` 4 or newer. Node.js
-22 or newer is needed to run the plugins in this repo. Check with `node --version`.
+You need a Linux desktop with systemd (the USB rules rely on logind), `sudo`, `bash` 4 or newer, `curl` and `unzip`
+(the download steps use them), and `zip` if you build packages with `scripts/package.sh`. Node.js 22 or newer is needed
+to run the plugins in this repo. Check with `node --version`. If you use the Flatpak build of OpenDeck, confirm it can
+see your system `node`, because I have not.
 
 Nothing here has been tested on a real AKP03E yet. The code was checked against fakes and reviewed for security,
 not run on the hardware. If something breaks on yours, the log paths under Troubleshooting will tell you where.
@@ -55,20 +57,23 @@ It asks before each step that changes your system.
 1. **USB rules.** Detects the deck and installs a udev rule for that one device (uses `sudo`). Nobody needs to look
    up a product ID. No deck plugged in yet? `scripts/install-udev.sh --all` installs rules for every supported model.
 2. **OpenDeck.** If it is missing, the script can fetch OpenDeck's own installer. That installer runs as you and may
-   use `sudo`, so you get to read it first.
+   use `sudo`. In an interactive run it is saved to a file and you can read it before agreeing to run it. With
+   `--run-opendeck-installer` it runs straight away.
 3. **Driver plugin.** Shows the release tag and the exact download URL, then asks.
 4. **Plugins in this repo.** Copies each one into OpenDeck's plugins folder, bundled with the SDK.
 
-`--yes` answers yes to the safe questions only. Steps that download and run someone else's code are never approved
-by `--yes`. They need their own flags, so you opt in on purpose:
+`--yes` (or `-y`) answers yes to the routine questions only. Steps that download and run someone else's code, or that
+widen USB access to every supported model, are never approved by `--yes`. The first two need their own flags, so you
+opt in on purpose:
 
 ```bash
 ./install.sh --yes --run-opendeck-installer --trust-latest-driver
 ```
 
 Neither download is pinned or checksum verified, because there is no hash in this repo to check against. Use those
-flags only if you trust the upstream projects. You can also skip any step with `--skip-udev`, `--skip-opendeck`,
-`--skip-driver` or `--skip-plugins`.
+flags only if you trust the upstream projects. If no deck is detected, the offer to install rules for every model is
+always asked at the keyboard, even with `--yes`. You can also skip any step with `--skip-udev`, `--skip-opendeck`,
+`--skip-driver` or `--skip-plugins`, and `--help` lists everything.
 
 If the driver step cannot find or download the release, it says so. Download the zip from the
 [driver releases page](https://github.com/4ndv/opendeck-akp03/releases) and use OpenDeck, Plugins, Install from file.
@@ -87,24 +92,32 @@ Home Assistant shows it only once.
 
 ### Set up a key
 
-1. In OpenDeck, drag **Call Service** from the Home Assistant group onto a key.
+1. In OpenDeck, find **Call Service** in the action list (the plugin is listed under Home Automation) and drag it onto a key.
 2. Click the key to open its settings.
-3. Under Connection, enter your base URL (for example `https://homeassistant.local:8123`) and paste the token.
+3. Under Connection, enter your base URL (for example `http://homeassistant.local:8123`, which is what a default install
+   serves) and paste the token.
    These are shared by every Home Assistant key, so you do this once.
 4. Under This key, fill in the service and the entity.
 
 | Field | Example | Notes |
 |---|---|---|
-| Service | `light.toggle` | `domain.service`, lowercase letters, digits and underscores only |
-| Entity ID | `light.desk` | Same format. Find it in Settings, Devices and services, Entities |
-| Extra data | `{"brightness_pct": 50}` | Optional. Must be a JSON object |
+| Service | `light.toggle` | `domain.service`, lowercase letters, digits and underscores only, 100 characters at most |
+| Entity ID | `light.desk` | Same format. Optional for the call, required for Show state. Find it in Settings, Devices and services, Entities. If set, it replaces any `entity_id` inside Extra data |
+| Extra data | `{"brightness_pct": 50}` | Optional. Must be a JSON object, 2000 characters at most. Longer input is cut off and the call fails |
 | Label | `Desk` | Optional, 40 characters at most |
 | Show state | on | Polls Home Assistant every 5 seconds and shows the state on the key |
 
-Press the key. A green tick means Home Assistant accepted the call. A red cross means it did not, and the plugin
-log says why.
+Press the key. OpenDeck shows its OK indicator when Home Assistant accepted the call, and its alert indicator when it
+did not. The plugin log says why. A press that arrives while the previous one is still running, or within 300 ms of
+it, is ignored and shows nothing.
 
-Use `https` if you can. With plain `http` the token crosses your network unencrypted.
+With plain `http` the token crosses your network unencrypted. Use `https` if you have a valid certificate. A
+self-signed certificate fails every call unless Node trusts it, for example by setting `NODE_EXTRA_CA_CERTS` to your
+CA file in the environment OpenDeck runs in.
+
+Keys can come from profiles other people give you. A key labelled "Desk" could call `lock.open` or
+`homeassistant.restart` with your token. Check each imported key's service before you press it, and use a Home
+Assistant token limited to what you need.
 
 ## Writing your own plugin
 
@@ -135,8 +148,9 @@ sdk.connect({
 ```
 
 Handlers you can define include `willAppear`, `willDisappear`, `keyDown`, `keyUp`, `didReceiveSettings` and
-`didReceiveGlobalSettings`. The `deck` object can `setTitle`, `setImage`, `setState`, `setSettings`,
-`setGlobalSettings`, `getGlobalSettings`, `showOk`, `showAlert` and `log`.
+`didReceiveGlobalSettings`. Any event name OpenDeck sends can have a handler. The `deck` object can `setTitle`,
+`setImage`, `setState`, `setSettings`, `getSettings`, `setGlobalSettings`, `getGlobalSettings`, `showOk`, `showAlert`,
+`log` and `send` (raw messages), and exposes `uuid` and `info`.
 
 Helpers that exist so you do not have to write the risky parts yourself:
 
@@ -144,13 +158,15 @@ Helpers that exist so you do not have to write the risky parts yourself:
 |---|---|
 | `sdk.settings(ev)` | Returns the action's settings as a plain object, or `{}` |
 | `sdk.str(v, max)` | Returns a string capped at `max`, or `''` |
-| `sdk.baseUrl(raw)` | Parses a URL. Allows only http and https, rejects embedded credentials |
-| `sdk.fetchLimited(url, init, opts)` | Fetch with a timeout, no redirects and a size cap |
-| `sdk.run(file, args)` | Runs a program with an argument array and no shell |
-| `sdk.guard(ms)` | Ignores a key press while one is running, and enforces a gap between presses |
+| `sdk.baseUrl(raw)` | Parses a URL, cuts it at 512 characters, drops query and fragment, strips trailing slashes. Allows only http and https, rejects embedded credentials, throws on bad input. It does not restrict the host |
+| `sdk.fetchLimited(url, init, opts)` | Fetch with an 8 s timeout and a 1 MiB size cap by default. Rejects on any redirect. Returns `{ status, ok, text, json() }` |
+| `sdk.run(file, args)` | Runs a program with an argument array and no shell. 10 s timeout, 1 MiB output cap, resolves with stdout |
+| `sdk.guard(ms)` | Returns a function that runs a task per key. It returns `false` and skips the task if one is running, or if the last one finished less than `ms` ago |
 
 Three rules. Settings travel inside shareable profiles, so treat them as untrusted input. Keep tokens in global
-settings, never in per-key settings. Never build a shell string from settings: use `sdk.run`.
+settings, never in per-key settings. Never build a shell string from settings: use `sdk.run`. That removes shell
+injection only. If the program or its arguments come from settings, they are still attacker controlled, so allowlist
+them.
 
 Settings panels load `_sdk/nullobj.css` and use its `.field`, `.input`, `.btn` and `.section` classes, so every
 plugin matches. After adding a plugin, run `./install.sh --skip-udev --skip-opendeck --skip-driver` to copy it into
@@ -161,6 +177,10 @@ OpenDeck, or build a zip with `./scripts/package.sh` and use OpenDeck, Plugins, 
 `OPENDECK_CONFIG` (overrides where plugins are installed, defaults to `~/.config/opendeck`, or the Flatpak folder
 if only the Flatpak app is installed). `XDG_CONFIG_HOME` is honoured if it is an absolute path. The udev rules
 destination is fixed at `/etc/udev/rules.d/40-ajazz-deck.rules` and cannot be changed from the environment.
+
+Test hooks, not for normal use: `AKP03_ZIP=/path/to/driver.zip` installs a local driver zip with no download and no
+prompt, `SYSFS_USB` points detection at a fake device tree, and `NULLAJAZZ_ALLOW_ROOT=1` lets the installer run as
+root.
 
 ## Updating
 
@@ -176,11 +196,15 @@ The udev step replaces the rules file each time. If you run it for a second deck
 ## Uninstalling
 
 ```bash
-sudo rm /etc/udev/rules.d/40-ajazz-deck.rules && sudo udevadm control --reload-rules
-rm -rf ~/.config/opendeck/plugins/homeassistant.sdPlugin
+sudo rm -f /etc/udev/rules.d/40-ajazz-deck.rules && sudo udevadm control --reload-rules
+rm -rf "${OPENDECK_CONFIG:-$HOME/.config/opendeck}/plugins/homeassistant.sdPlugin"
 ```
 
-Remove the driver plugin from OpenDeck's Plugins tab, or delete its folder from the same plugins directory.
+On Flatpak the plugins live in `~/.var/app/me.amankhanna.opendeck/config/opendeck/plugins/`. Remove the driver plugin
+from OpenDeck's Plugins tab, or delete its folder under `plugins/`.
+
+Uninstalling does not revoke your Home Assistant token, and OpenDeck may keep it in its settings. Delete the long
+lived token in your Home Assistant profile, on the Security tab.
 
 ## Troubleshooting
 
@@ -191,13 +215,16 @@ plain SSH or without logind it will not apply.
 **The installer finds no deck.** Use a data cable. Run `./scripts/install-udev.sh --dry-run` to see the detection on its
 own. If it reports an unsupported ID starting with `0300`, open an issue with that ID and your model.
 
-**Which revision do I have?** The AKP03E ships as `0300:1002` (original) or `0300:3002` (rev 2). Rev 2 reports key
-release as well as press, which long press and push to talk need.
+**Which revision do I have?** The AKP03E ships as `0300:1002` (original) or `0300:3002` (rev 2). According to the
+driver library's notes, rev 2 also reports key release, which long press and push to talk would need. No plugin here
+uses that yet.
 
 **A key shows a red cross.** The service call failed. Check the base URL and token, and that the service and entity
-exist. Plugin logs are in `~/.local/share/opendeck/logs/`, with one file per plugin under `plugins/`.
+exist. Per OpenDeck's docs, logs are in `~/.local/share/opendeck/logs/` (a different folder on Flatpak), with one file
+per plugin under `plugins/`. I have not confirmed this on a running install.
 
-**A key shows `?` instead of a state.** Home Assistant is unreachable, or the entity ID is wrong.
+**A key shows `?` instead of a state.** Home Assistant is unreachable, the entity ID is wrong, or the token is wrong
+or missing.
 
 **Plugins do not load.** Check `node --version` prints 22 or newer. Then restart OpenDeck.
 

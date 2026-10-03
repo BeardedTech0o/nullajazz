@@ -41,7 +41,7 @@ fail() { FAILED=1; warn "$*"; }
 die()  { printf '[x] %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# Asks a question. Under --yes it answers yes. Use ask_manual for anything that fetches code.
+# Asks a question. Under --yes it answers yes. Use ask_manual for anything that fetches code or widens access.
 confirm() {
   [ "$YES" = 1 ] && return 0
   ask_manual "$1"
@@ -94,9 +94,12 @@ install_plugin_dir() {
 
 # Checks a zip before extracting it: no absolute paths, no .., no symlinks.
 zip_is_safe() {
-  local z="$1"
-  unzip -Z1 "$z" | grep -Eq '(^/|(^|/)\.\.(/|$))' && { fail "zip contains unsafe paths"; return 1; }
-  unzip -Z "$z" | grep -q '^l' && { fail "zip contains symlinks"; return 1; }
+  local z="$1" names details
+  # Capture first: piping straight into grep -q can kill unzip with SIGPIPE and make a bad zip look safe.
+  names="$(unzip -Z1 "$z")" || { fail "could not read the zip"; return 1; }
+  details="$(unzip -Z "$z")" || { fail "could not read the zip"; return 1; }
+  if grep -Eq '(^/|(^|/)\.\.(/|$))' <<<"$names"; then fail "zip contains unsafe paths"; return 1; fi
+  if grep -q '^l' <<<"$details"; then fail "zip contains symlinks"; return 1; fi
   return 0
 }
 
@@ -108,7 +111,8 @@ if [ "$DO_UDEV" = 1 ]; then
     if confirm "Install udev rules for the deck(s) found? (uses sudo)"; then "$here/scripts/install-udev.sh" || fail "udev step failed"; else warn "udev step skipped"; fi
   else
     warn "No deck detected. Plug it in and rerun, or install rules for every supported model now."
-    if confirm "Install rules for every supported model? (uses sudo)"; then "$here/scripts/install-udev.sh" --all || fail "udev step failed"; else warn "udev step skipped"; fi
+    # Always asked at the keyboard: --all opens access for IDs that may belong to unrelated products.
+    if ask_manual "Install rules for every supported model? (uses sudo)"; then "$here/scripts/install-udev.sh" --all || fail "udev step failed"; else warn "udev step skipped"; fi
   fi
 fi
 
