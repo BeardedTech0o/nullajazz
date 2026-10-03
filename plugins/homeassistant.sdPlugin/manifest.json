@@ -1,0 +1,24 @@
+{
+  "SDKVersion": 2,
+  "Name": "Home Assistant",
+  "Version": "0.1.0",
+  "Author": "B",
+  "Description": "Call Home Assistant services and show entity state on a key.",
+  "Icon": "icon",
+  "CodePath": "plugin.js",
+  "CodePathLin": "plugin.js",
+  "Category": "Home Automation",
+  "OS": [{ "Platform": "linux" }],
+  "Software": { "MinimumVersion": "6.4" },
+  "Actions": [
+    {
+      "Name": "Call Service",
+      "UUID": "dev.nullajazz.homeassistant.service",
+      "Icon": "icon",
+      "Tooltip": "Call a Home Assistant service, optionally showing an entity's state.",
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "icon", "TitleAlignment": "bottom" }],
+      "PropertyInspectorPath": "pi.html"
+    }
+  ]
+}
