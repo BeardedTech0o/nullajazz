@@ -3,23 +3,19 @@
 <head>
 <meta charset="utf-8">
 <title>Home Assistant</title>
-<style>
-  body { font: 13px sans-serif; background: #2d2d2d; color: #ddd; padding: 8px; }
-  label { display: block; margin: 8px 0 2px; }
-  input, textarea { width: 100%; box-sizing: border-box; background: #1e1e1e; color: #eee; border: 1px solid #555; padding: 4px; }
-  h4 { margin: 14px 0 0; }
-</style>
+<link rel="stylesheet" href="_sdk/nullobj.css">
+<link rel="stylesheet" href="../_sdk/nullobj.css">
 </head>
 <body>
-<h4>Connection (shared by all keys)</h4>
-<label>Base URL</label><input id="baseUrl" placeholder="https://homeassistant.local:8123">
-<label>Long-lived access token</label><input id="token" type="password">
-<h4>This key</h4>
-<label>Service</label><input id="service" placeholder="light.toggle">
-<label>Entity ID</label><input id="entity" placeholder="light.desk">
-<label>Extra data (JSON, optional)</label><textarea id="data" rows="3" placeholder='{"brightness_pct": 50}'></textarea>
-<label>Label (optional)</label><input id="label">
-<label><input id="showState" type="checkbox" style="width:auto"> Show entity state on the key</label>
+<div class="section"><h4 class="caps">Connection</h4><span class="hint">Shared by all keys</span></div>
+<div class="field"><label for="baseUrl">Base URL</label><input class="input" id="baseUrl" placeholder="https://homeassistant.local:8123"></div>
+<div class="field"><label for="token">Long-lived access token</label><input class="input" id="token" type="password" autocomplete="off"></div>
+<div class="section"><h4 class="caps">This key</h4></div>
+<div class="field"><label for="service">Service</label><input class="input" id="service" placeholder="light.toggle"></div>
+<div class="field"><label for="entity">Entity ID</label><input class="input" id="entity" placeholder="light.desk"></div>
+<div class="field"><label for="data">Extra data (JSON object, optional)</label><textarea class="input" id="data" rows="3" placeholder='{"brightness_pct": 50}'></textarea></div>
+<div class="field"><label for="label">Label (optional)</label><input class="input" id="label" maxlength="40"></div>
+<div class="field"><label class="check" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--fg);font-weight:500"><input id="showState" type="checkbox"> Show entity state on the key</label></div>
 <script>
 let ws, uuid, ctx;
 const keyFields = ['service', 'entity', 'data', 'label'];
