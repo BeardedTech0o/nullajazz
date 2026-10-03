@@ -12,7 +12,7 @@
 </head>
 <body>
 <h4>Connection (shared by all keys)</h4>
-<label>Base URL</label><input id="baseUrl" placeholder="http://homeassistant.local:8123">
+<label>Base URL</label><input id="baseUrl" placeholder="https://homeassistant.local:8123">
 <label>Long-lived access token</label><input id="token" type="password">
 <h4>This key</h4>
 <label>Service</label><input id="service" placeholder="light.toggle">
@@ -26,11 +26,16 @@ const keyFields = ['service', 'entity', 'data', 'label'];
 const globalFields = ['baseUrl', 'token'];
 const $ = (id) => document.getElementById(id);
 function send(o) { ws.send(JSON.stringify(o)); }
-function save() {
+let globalLoaded = false;
+function saveKey() {
   const s = {};
   keyFields.forEach((f) => (s[f] = $(f).value));
   s.showState = $('showState').checked;
   send({ event: 'setSettings', context: uuid, payload: s });
+}
+// Only sent after the stored values have loaded, so an early edit can never blank the saved token.
+function saveGlobal() {
+  if (!globalLoaded) return;
   const g = {};
   globalFields.forEach((f) => (g[f] = $(f).value));
   send({ event: 'setGlobalSettings', context: uuid, payload: g });
@@ -45,12 +50,16 @@ function connectElgatoStreamDeckSocket(port, inUUID, registerEvent, info, action
   };
   ws.onmessage = (m) => {
     const ev = JSON.parse(m.data);
-    if (ev.event === 'didReceiveGlobalSettings') globalFields.forEach((f) => ($(f).value = (ev.payload.settings || {})[f] || ''));
+    if (ev.event === 'didReceiveGlobalSettings') {
+      globalFields.forEach((f) => ($(f).value = (ev.payload.settings || {})[f] || ''));
+      globalLoaded = true;
+    }
   };
   const s = (ai.payload && ai.payload.settings) || {};
   keyFields.forEach((f) => ($(f).value = s[f] || ''));
   $('showState').checked = !!s.showState;
-  document.querySelectorAll('input,textarea').forEach((e) => e.addEventListener('change', save));
+  keyFields.concat('showState').forEach((f) => $(f).addEventListener('change', saveKey));
+  globalFields.forEach((f) => $(f).addEventListener('change', saveGlobal));
 }
 </script>
 </body>
