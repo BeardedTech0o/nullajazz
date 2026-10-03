@@ -1,5 +1,7 @@
 # nullajazz
 
+![nullajazz, Linux toolkit for the Ajazz AKP03E](./public/nullajazz-readme.webp)
+
 Run an Ajazz AKP03E on Linux, with your own plugins. Home Assistant works today. Hue and PC control are next.
 
 The deck itself is driven by [OpenDeck](https://github.com/nekename/OpenDeck) and the community
